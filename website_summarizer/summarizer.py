@@ -13,7 +13,7 @@ import streamlit as st
 load_dotenv()
 api_key = os.getenv("SAMBANOVA_API_KEY")
 
-# 🔐 Initialize SambaNova OpenAI client with secure key
+#  Initialize SambaNova OpenAI client with secure key
 client = OpenAI(
     api_key=api_key,
     base_url="https://api.sambanova.ai/v1"
@@ -49,11 +49,11 @@ def extract_article_with_selenium(url):
     except Exception as e:
         return f"Error extracting article: {str(e)}"
 
-# ✅ Use working SambaNova model
+# ✅ Using working SambaNova model
 def summarize_with_sambanova(text):
     try:
         response = client.chat.completions.create(
-            model="Meta-Llama-3.1-8B-Instruct",  # ✅ Model your key supports
+             model="Meta-Llama-3.1-8B-Instruct",  #used model
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that summarizes long articles clearly."},
                 {"role": "user", "content": f"Summarize this article:\n\n{text}"}
