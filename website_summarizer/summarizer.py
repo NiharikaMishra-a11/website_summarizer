@@ -19,6 +19,7 @@ client = OpenAI(api_key=api_key, base_url="https://api.sambanova.ai/v1")
 # Get headless Chrome driver
 def get_driver():
     chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/google-chrome" 
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
