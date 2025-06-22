@@ -20,7 +20,7 @@ from langchain.document_loaders import TextLoader
 from langchain.schema import Document
 
 load_dotenv()
-api_key = os.getenv("SAMBANOVA_API_KEY") or os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("SAMBANOVA_API_KEY") 
 client = OpenAI(api_key=api_key, base_url="https://api.sambanova.ai/v1")
 
 # Setup Chrome for EC2 or local
@@ -69,25 +69,32 @@ def create_vector_index(docs):
 def summarize_chunks(text, detail_level):
     final_summary = ""
     chunks = split_text(text)
-    max_tokens = 300 if detail_level == "Detailed" else 150
-    prompt_type = "in detail" if detail_level == "Detailed" else "briefly"
+    
+    if detail_level == "Detailed":
+        max_tokens = 300
+        prompt_type = "Summarize the following content in detail:"
+    else:
+        max_tokens = 100
+        prompt_type = "Summarize the following content in 3-5 very short bullet points. Do not write 'Here is a brief summary'."
 
     for doc in chunks:
         try:
-            st.toast("🤖 Summarizing...")
+            st.toast("🧠 Summarizing...")
             response = client.chat.completions.create(
                 model="Meta-Llama-3.1-8B-Instruct",
                 messages=[
-                    {"role": "system", "content": "You summarize clearly and concisely."},
-                    {"role": "user", "content": f"Summarize this {prompt_type}:\n{doc.page_content}"}
+                    {"role": "system", "content": "You are a concise and clear summarizer."},
+                    {"role": "user", "content": f"{prompt_type}\n\n{doc.page_content}"}
                 ],
                 max_tokens=max_tokens,
-                temperature=0.5,
+                temperature=0.3,
             )
-            final_summary += response.choices[0].message.content.strip() + "\n\n"
+            summary_text = response.choices[0].message.content.strip()
+            final_summary += summary_text + "\n\n"
         except Exception as e:
             final_summary += f"❌ Error: {str(e)}"
             break
+
     return final_summary.strip()
 
 # LangChain-based QA over indexed docs
