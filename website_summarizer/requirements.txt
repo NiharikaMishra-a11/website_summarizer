@@ -8,3 +8,8 @@ streamlit
 tiktoken
 PyPDF2
 webdriver-manager
+streamlit
+numpy
+sentence-transformers
+
+
