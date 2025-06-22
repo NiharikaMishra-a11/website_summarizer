@@ -1,4 +1,10 @@
-streamlit
+langchain
+faiss-cpu
 openai
+python-dotenv
 selenium
 beautifulsoup4
+streamlit
+tiktoken
+PyPDF2
+webdriver-manager
