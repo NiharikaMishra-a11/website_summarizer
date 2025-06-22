@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 import PyPDF2
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 import shutil
@@ -61,7 +61,7 @@ def split_text(text, chunk_size=1500, overlap=200):
 
 # Vector index
 def create_vector_index(docs):
-    embeddings = OpenAIEmbeddings()
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     return FAISS.from_documents(docs, embeddings)
 
 # Summarization
