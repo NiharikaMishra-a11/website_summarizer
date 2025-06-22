@@ -8,43 +8,38 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import PyPDF2
-import tempfile
-import requests
-
-# LangChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
-from langchain.document_loaders import TextLoader
 from langchain.schema import Document
 
+# Load API key
 load_dotenv()
-api_key = os.getenv("SAMBANOVA_API_KEY") 
+api_key = os.getenv("SAMBANOVA_API_KEY") or os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key, base_url="https://api.sambanova.ai/v1")
 
-# Setup Chrome for EC2 or local
+# Setup Chrome Driver
 def get_driver():
     options = Options()
-    options.binary_location = "/usr/bin/google-chrome"
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+    options.binary_location = "/usr/bin/chromium"  # For EC2, use "chromium"
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
     return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-# Scrape URL using Selenium + BeautifulSoup
+# Extract article from URL
 def extract_article(url):
     try:
         st.toast("🌐 Extracting article...")
         driver = get_driver()
         driver.get(url)
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        paragraphs = soup.find_all("p")
-        text = " ".join(p.get_text() for p in paragraphs if len(p.get_text()) > 40)
         driver.quit()
-        return text.strip()
+        paragraphs = soup.find_all("p")
+        return " ".join(p.get_text() for p in paragraphs if len(p.get_text()) > 40)
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"❌ Error: {e}"
 
 # Extract PDF text
 def extract_pdf_text(uploaded_file):
@@ -53,51 +48,49 @@ def extract_pdf_text(uploaded_file):
         reader = PyPDF2.PdfReader(uploaded_file)
         return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
     except Exception as e:
-        return f"❌ PDF extract error: {str(e)}"
+        return f"❌ PDF extract error: {e}"
 
-# Split large text into chunks
+# Text splitter
 def split_text(text, chunk_size=1500, overlap=200):
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
     return splitter.create_documents([text])
 
-# Create vector store (in-memory FAISS)
+# FAISS index for RAG
 def create_vector_index(docs):
     embeddings = OpenAIEmbeddings()
     return FAISS.from_documents(docs, embeddings)
 
-# Summarize all chunks one by one
+# Summarizer
 def summarize_chunks(text, detail_level):
-    final_summary = ""
     chunks = split_text(text)
-    
-    if detail_level == "Detailed":
-        max_tokens = 300
-        prompt_type = "Summarize the following content in detail:"
-    else:
-        max_tokens = 100
-        prompt_type = "Summarize the following content in 3-5 very short bullet points. Do not write 'Here is a brief summary'."
+    summary = ""
+    prompt_type = (
+        "Summarize this in 3–5 very short bullet points. Do not include 'here is the summary':"
+        if detail_level == "Brief"
+        else "Summarize this in clear paragraphs without bullet points or headers:"
+    )
+    max_tokens = 100 if detail_level == "Brief" else 300
 
-    for doc in chunks:
+    for chunk in chunks:
         try:
-            st.toast("🧠 Summarizing...")
+            st.toast("🤖 Summarizing...")
             response = client.chat.completions.create(
                 model="Meta-Llama-3.1-8B-Instruct",
                 messages=[
-                    {"role": "system", "content": "You are a concise and clear summarizer."},
-                    {"role": "user", "content": f"{prompt_type}\n\n{doc.page_content}"}
+                    {"role": "system", "content": "You are a helpful, concise summarizer."},
+                    {"role": "user", "content": f"{prompt_type}\n\n{chunk.page_content}"}
                 ],
                 max_tokens=max_tokens,
-                temperature=0.3,
+                temperature=0.4,
             )
-            summary_text = response.choices[0].message.content.strip()
-            final_summary += summary_text + "\n\n"
+            summary += response.choices[0].message.content.strip() + "\n\n"
         except Exception as e:
-            final_summary += f"❌ Error: {str(e)}"
+            summary += f"❌ Error: {e}"
             break
 
-    return final_summary.strip()
+    return summary.strip()
 
-# LangChain-based QA over indexed docs
+# RAG Question Answering
 def ask_question(text, user_question):
     docs = split_text(text)
     vector_index = create_vector_index(docs)
@@ -105,44 +98,53 @@ def ask_question(text, user_question):
     chain = RetrievalQA.from_chain_type(llm=client, retriever=retriever)
     return chain.run(user_question)
 
-# Streamlit UI
-st.set_page_config(page_title="Universal AI Summarizer + QA", layout="wide")
-st.title("🧠 Smart Summarizer + Chat over Documents")
+# ----------------------- UI ---------------------------
 
-input_mode = st.selectbox("📥 Input Type", ["Article URL", "Text", "PDF"])
-task_mode = st.radio("Choose Action", ["📝 Full Summary", "💬 Ask a Question"])
+st.set_page_config(page_title="AI Summarizer + RAG Q&A", layout="wide")
+st.title("🧠 Universal AI Summarizer + Ask Your Docs")
 
+# Session state defaults
+if "input_mode" not in st.session_state:
+    st.session_state.input_mode = "Article URL"
+if "task_mode" not in st.session_state:
+    st.session_state.task_mode = "📝 Full Summary"
+if "summary_style" not in st.session_state:
+    st.session_state.summary_style = "Brief"
+
+# Select inputs
+st.session_state.input_mode = st.selectbox("📥 Select Input Type", ["Article URL", "Text", "PDF"])
+st.session_state.task_mode = st.radio("Choose Action", ["📝 Full Summary", "💬 Ask a Question"])
+
+# Input handlers
 text = ""
-
-# Get input
-if input_mode == "Article URL":
+if st.session_state.input_mode == "Article URL":
     url = st.text_input("Paste article URL")
     if st.button("Load Article"):
         text = extract_article(url)
 
-elif input_mode == "Text":
-    text_input = st.text_area("Paste your text", height=300)
+elif st.session_state.input_mode == "Text":
+    text_input = st.text_area("Paste your text here", height=300)
     if st.button("Load Text"):
         text = text_input
 
-elif input_mode == "PDF":
+elif st.session_state.input_mode == "PDF":
     uploaded = st.file_uploader("Upload PDF", type=["pdf"])
     if uploaded and st.button("Load PDF"):
         text = extract_pdf_text(uploaded)
 
-# Perform task
+# Task handler
 if text:
-    if task_mode == "📝 Full Summary":
-        detail_level = st.radio("Summary Style", ["Brief", "Detailed"])
-        with st.spinner("🔄 Summarizing..."):
-            output = summarize_chunks(text, detail_level)
+    if st.session_state.task_mode == "📝 Full Summary":
+        st.session_state.summary_style = st.radio("Choose Summary Style", ["Brief", "Detailed"])
+        with st.spinner("✍️ Summarizing..."):
+            summary = summarize_chunks(text, st.session_state.summary_style)
         st.subheader("📄 Summary:")
-        st.write(output)
+        st.write(summary)
 
-    elif task_mode == "💬 Ask a Question":
-        question = st.text_input("What do you want to know?")
-        if st.button("Ask"):
-            with st.spinner("🔍 Searching..."):
+    elif st.session_state.task_mode == "💬 Ask a Question":
+        question = st.text_input("❓ Ask a question from this content")
+        if st.button("Ask") and question.strip():
+            with st.spinner("🔍 Searching answer..."):
                 answer = ask_question(text, question)
             st.subheader("💬 Answer:")
             st.write(answer)
