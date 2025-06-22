@@ -25,10 +25,7 @@ client = OpenAI(api_key=api_key, base_url="https://api.sambanova.ai/v1")
 
 def get_driver():
     options = Options()
-    chrome_path = shutil.which("chromium") or shutil.which("chromium-browser")
-    if not chrome_path:
-        raise FileNotFoundError("❌ Chromium browser not found on system.")
-    options.binary_location = chrome_path
+    options.binary_location = "/usr/bin/google-chrome"
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
